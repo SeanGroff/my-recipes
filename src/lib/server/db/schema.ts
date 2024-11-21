@@ -1,4 +1,4 @@
-import { pgTable, serial, text, integer, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, timestamp } from 'drizzle-orm/pg-core';
 
 export const user = pgTable('user', {
 	id: text('id').primaryKey(),
@@ -13,6 +13,32 @@ export const session = pgTable('session', {
 		.notNull()
 		.references(() => user.id),
 	expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull()
+});
+
+export const recipe = pgTable('recipe', {
+	id: text('id').primaryKey(),
+	title: text('title').notNull(),
+	authorId: text('author_id')
+		.notNull()
+		.references(() => user.id),
+	createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull(),
+	updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull()
+});
+
+export const ingredient = pgTable('ingredient', {
+	id: text('id').primaryKey(),
+	name: text('name').notNull(),
+	recipeId: text('recipe_id')
+		.notNull()
+		.references(() => recipe.id)
+});
+
+export const step = pgTable('step', {
+	id: text('id').primaryKey(),
+	description: text('description').notNull(),
+	recipeId: text('recipe_id')
+		.notNull()
+		.references(() => recipe.id)
 });
 
 export type Session = typeof session.$inferSelect;
