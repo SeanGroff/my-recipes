@@ -42,5 +42,7 @@ export const step = pgTable('step', {
 });
 
 export type Session = typeof session.$inferSelect;
+export type SessionInsert = typeof session.$inferInsert;
 
 export type User = typeof user.$inferSelect;
+export type UserInsert = typeof user.$inferInsert;

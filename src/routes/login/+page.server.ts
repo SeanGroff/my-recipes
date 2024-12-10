@@ -1,30 +1,89 @@
+import { hash, verify } from '@node-rs/argon2';
 import { encodeBase32LowerCase } from '@oslojs/encoding';
-import type { Actions } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
+import { eq } from 'drizzle-orm';
+import * as auth from '$lib/server/auth';
+import { db } from '$lib/server/db';
+import * as table from '$lib/server/db/schema';
+import type { Actions, PageServerLoad } from './$types';
 
-export const actions = {
+export const load: PageServerLoad = async (event) => {
+	if (event.locals.user) {
+		return redirect(302, '/recipes');
+	}
+	return {};
+};
+
+export const actions: Actions = {
 	login: async (event) => {
-		// 1) Get Username & Password from formData
-		// 2) Validate username and password
-		// 3) Query the database for the user by the username
-		// 4) Check if the user exists
-		// 5) Verify the password
-		// 6) Generate a session token
-		// 7) Create a session in the database
-		// 8) Set the session token cookie
-		// 9) Redirect to the main page
+		const formData = await event.request.formData();
+		const username = formData.get('username');
+		const password = formData.get('password');
+
+		if (!validateUsername(username)) {
+			return fail(400, { message: 'Invalid username' });
+		}
+		if (!validatePassword(password)) {
+			return fail(400, { message: 'Invalid password' });
+		}
+
+		const results = await db.select().from(table.user).where(eq(table.user.username, username));
+
+		const existingUser = results.at(0);
+		if (!existingUser) {
+			return fail(400, { message: 'Incorrect username or password' });
+		}
+
+		const validPassword = await verify(existingUser.passwordHash, password, {
+			memoryCost: 19456,
+			timeCost: 2,
+			outputLen: 32,
+			parallelism: 1
+		});
+		if (!validPassword) {
+			return fail(400, { message: 'Incorrect username or password' });
+		}
+
+		const sessionToken = auth.generateSessionToken();
+		const session = await auth.createSession(sessionToken, existingUser.id);
+		auth.setSessionTokenCookie(event, sessionToken, session.expiresAt);
+
+		return redirect(302, '/recipes');
 	},
 	register: async (event) => {
-		// 1) Get Username & Password from formData
-		// 2) Validate username and password
-		// 3) generate a user ID
-		// 4) Hash the password
-		// 5) Insert the user into the database
-		// 6) Generate a session token
-		// 7) Create a session in the database
-		// 8) Set the session token cookie
-		// 9) Redirect to the main page
+		const formData = await event.request.formData();
+		const username = formData.get('username');
+		const password = formData.get('password');
+
+		if (!validateUsername(username)) {
+			return fail(400, { message: 'Invalid username' });
+		}
+		if (!validatePassword(password)) {
+			return fail(400, { message: 'Invalid password' });
+		}
+
+		const userId = generateUserId();
+		const passwordHash = await hash(password, {
+			// recommended minimum parameters
+			memoryCost: 19456,
+			timeCost: 2,
+			outputLen: 32,
+			parallelism: 1
+		});
+
+		try {
+			await db.insert(table.user).values({ id: userId, username, passwordHash });
+
+			const sessionToken = auth.generateSessionToken();
+			const session = await auth.createSession(sessionToken, userId);
+			auth.setSessionTokenCookie(event, sessionToken, session.expiresAt);
+		} catch {
+			return fail(500, { message: 'An error has occurred' });
+		}
+
+		return redirect(302, '/recipes');
 	}
-} satisfies Actions;
+};
 
 function generateUserId() {
 	// ID with 120 bits of entropy, or about the same as UUID v4.
